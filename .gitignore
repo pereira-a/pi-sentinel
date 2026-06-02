@@ -1,0 +1,106 @@
+### Universal ###
+# Common files that should be ignored in all projects
+
+# Logs
+*.log
+# Temporary files
+*.tmp
+*~
+
+*.bak
+# Environment files (containing secrets, API keys, credentials)
+.env
+*.env
+.env.*
+
+# Local configuration that shouldn't be shared
+*.local
+
+### Typescript ###
+# typescript specific files
+
+*.tsbuildinfo
+node_modules/
+dist/
+
+### Git ###
+# Git version control system files and directories
+
+# Git
+.git/
+.gitattributes
+.gitmodules
+
+.git-rewrite/
+/.git-credentials
+.git-blame-ignore-revs
+*.git
+.gitkeep
+
+.git-old/
+.gitconfig
+.github/
+.gitreview
+.gitk
+
+.gitstats
+.gitchangelog.rc
+.git-blame*
+.git-rewrite/
+.gitmessage
+
+.gitflow
+git.properties
+.git-blame-ignore
+.gitkeep
+.gitattributes.local
+
+.git/lfs/
+.git-crypt/
+.gitflow.default
+.gitlint
+.gitversion
+
+.gitsecret/
+.git/hooks/
+.git-credentials.local
+
+### Npm ###
+# NPM package manager files and directories
+
+# NPM (Node Package Manager)
+node_modules/
+package-lock.json
+.npm/
+.node-gyp/
+
+npm-debug.log*
+.npmrc
+.npm-cache/
+.npm-global/
+.node_repl_history
+
+.env
+npm-shrinkwrap.json
+.npmignore
+.package-lock.json
+npm-debug.log.*
+
+.npm-debug/
+.npm-tmp/
+.npm-tarball/
+node_modules_*
+.npm-init.js
+
+.npm-update-notifier
+.node_modules.ember-try/
+.npm-version
+.node_history
+.v8flags.*
+
+.babel.json
+package.json.bak
+
+### Agents ###
+# Files related to AI agents, such as configuration files, logs, and temporary data
+PLAN.md
