@@ -15,13 +15,7 @@ import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import type { Rule, SentinelConfig, UserConfig } from "./types";
 
-// ---------------------------------------------------------------------------
-// Default rule set (empty for Phase 1 — filled in Phase 2)
-// ---------------------------------------------------------------------------
-
-export function getDefaultRules(): Rule[] {
-  return [];
-}
+import { getDefaultRules } from "./rules/index";
 
 // ---------------------------------------------------------------------------
 // Default full config
@@ -32,7 +26,7 @@ function buildDefaults(cwd: string): SentinelConfig {
     enabled: true,
     rules: getDefaultRules(),
     workspacePaths: [resolve(cwd)],
-    defaultAction: "allow",
+    defaultAction: "ask",
   };
 }
 

@@ -3,6 +3,19 @@
  */
 
 // ---------------------------------------------------------------------------
+// Tool names
+// ---------------------------------------------------------------------------
+
+export type ToolName =
+  | "bash"
+  | "read"
+  | "write"
+  | "edit"
+  | "grep"
+  | "find"
+  | "ls";
+
+// ---------------------------------------------------------------------------
 // Rule schema
 // ---------------------------------------------------------------------------
 
@@ -52,10 +65,11 @@ export interface Rule {
   action: "deny" | "ask" | "allow";
 
   /**
-   * Which tool this rule applies to.
+   * Which tool(s) this rule applies to.
+   * Use an array to target multiple tools, e.g. ["write", "edit"].
    * "*" matches every tool.
    */
-  tool: "bash" | "read" | "write" | "edit" | "grep" | "find" | "*";
+  tool: ToolName | ToolName[] | "*";
 
   /** At least one matcher field must be set. */
   match: RuleMatch;
@@ -84,8 +98,8 @@ export interface SentinelConfig {
 
   /**
    * What to do when no rule matches a tool call.
-   *   "allow" - pass through silently (default, least intrusive)
-   *   "ask"   - prompt for every unmatched call (strict mode)
+   *   "allow" - pass through silently (least intrusive)
+   *   "ask"   - prompt for every unmatched call (strict mode, default)
    */
   defaultAction: "allow" | "ask";
 }
@@ -112,7 +126,11 @@ export interface UserConfig {
 // Runtime audit log entry
 // ---------------------------------------------------------------------------
 
-export type AuditAction = "allowed" | "denied" | "asked-allowed" | "asked-denied";
+export type AuditAction =
+  | "allowed"
+  | "denied"
+  | "asked-allowed"
+  | "asked-denied";
 
 export interface AuditEntry {
   timestamp: number;

@@ -1,16 +1,19 @@
 /**
  * pi-sentinel — entry point.
  *
- * Phase 1: skeleton wiring.
- *   - Load and reload config on session_start
- *   - tool_call handler (pass-through, no rules yet)
- *   - Footer status indicator
- *   - /sentinel-status command
+ * Phase 2: rule engine wired into tool_call.
+ *   - deny rules block immediately with a notification
+ *   - ask rules pass through (prompting added in Phase 3)
+ *   - allow rules pass through silently
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 import { loadConfig, getConfigPaths } from "./src/config";
 import { registerCommands } from "./src/commands";
+import { evaluateRules, extractSubject } from "./src/rule-engine";
 import type { SentinelConfig, AuditEntry } from "./src/types";
 import type { ConfigPaths } from "./src/config";
 
@@ -29,7 +32,8 @@ export default function (pi: ExtensionAPI) {
   }
 
   function getPaths(): ConfigPaths {
-    if (!configPaths) throw new Error("[pi-sentinel] Config paths not yet resolved");
+    if (!configPaths)
+      throw new Error("[pi-sentinel] Config paths not yet resolved");
     return configPaths;
   }
 
@@ -38,6 +42,7 @@ export default function (pi: ExtensionAPI) {
   // -------------------------------------------------------------------------
 
   pi.on("session_start", async (_event, ctx) => {
+    auditLog.length = 0;
     config = loadConfig(ctx.cwd);
     configPaths = getConfigPaths(ctx.cwd);
     updateStatus(ctx);
@@ -47,10 +52,51 @@ export default function (pi: ExtensionAPI) {
   // tool_call: placeholder pass-through (rules wired in Phase 2)
   // -------------------------------------------------------------------------
 
-  pi.on("tool_call", async (_event, _ctx) => {
+  pi.on("tool_call", async (event, ctx) => {
     if (!config?.enabled) return undefined;
 
-    // Rule evaluation will be added in Phase 2.
+    const input = event.input as Record<string, unknown>;
+    const result = evaluateRules(event.toolName, input, config, ctx.cwd);
+
+    // No rule matched — apply defaultAction.
+    // "ask" without a matched rule defers to Phase 3 prompting; pass through for now.
+    if (!result) return undefined;
+
+    const subject = extractSubject(event.toolName, input);
+
+    if (result.verdict === "deny") {
+      auditLog.push({
+        timestamp: Date.now(),
+        toolName: event.toolName,
+        ruleId: result.rule.id,
+        action: "denied",
+        subject,
+      });
+
+      ctx.ui.notify(
+        `[sentinel] Blocked: ${result.rule.id}\n${result.rule.description}\n\n${subject}`,
+        "warning",
+      );
+      return {
+        block: true,
+        reason: `${result.rule.id}: ${result.rule.description}`,
+      };
+    }
+
+    if (result.verdict === "allow") {
+      // Explicit allow rule (user override)
+      ctx.ui.notify(
+        `[sentinel] Allow: ${result.rule.id}\n${result.rule.description}\n\n${subject}`,
+        "warning",
+      );
+      return undefined;
+    }
+
+    // verdict === "ask" — prompting added in Phase 3, pass through for now.
+    ctx.ui.notify(
+      `[sentinel] Ask: ${result.rule.id}\n${result.rule.description}\n\n${subject}`,
+      "warning",
+    );
     return undefined;
   });
 
