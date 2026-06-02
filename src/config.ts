@@ -10,7 +10,7 @@
  * from each layer are appended together (not replaced).
  */
 
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import type { Rule, SentinelConfig, UserConfig } from "./types";
@@ -142,7 +142,6 @@ export function loadConfig(cwd: string): SentinelConfig {
 // ---------------------------------------------------------------------------
 
 export function saveUserConfig(filePath: string, userConfig: UserConfig): void {
-  const dir = join(filePath, "..");
   mkdirSync(dirname(filePath), { recursive: true });
   writeFileSync(filePath, JSON.stringify(userConfig, null, 2) + "\n", "utf-8");
 }
@@ -153,4 +152,25 @@ export function saveUserConfig(filePath: string, userConfig: UserConfig): void {
 
 export function readRawUserConfig(filePath: string): UserConfig {
   return readUserConfig(filePath) ?? {};
+}
+
+// ---------------------------------------------------------------------------
+// Public: add a rule to config file
+// ---------------------------------------------------------------------------
+
+/**
+ * Add a rule to a config file and save.
+ * Reads the current user config, appends the rule, and writes back.
+ * Uses withFileMutationQueue for safety against concurrent writes.
+ */
+export async function addRuleToConfigFile(filePath: string, newRule: Rule): Promise<void> {
+  await withFileMutationQueue(filePath, async () => {
+    const current = readRawUserConfig(filePath);
+    const rules = Array.isArray(current.rules) ? current.rules : [];
+    const updated: UserConfig = {
+      ...current,
+      rules: [...rules, { id: newRule.id, ...newRule }],
+    };
+    saveUserConfig(filePath, updated);
+  });
 }
