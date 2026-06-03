@@ -34,6 +34,25 @@ function normalizePath(p: string): string {
   return p.replace(/\\/g, "/");
 }
 
+/**
+ * Extract path-like tokens from a bash command string.
+ * Matches tokens beginning with ./, ../, /, or ~/ and returns them
+ * as-is (caller resolves to absolute paths).
+ * Used for matching pathPatterns in hybrid bash+path rules.
+ */
+export function extractPathsFromBashCommand(command: string): string[] {
+  const results: string[] = [];
+  // Match tokens that start with ./, ../, /, or ~/
+  // Stop at whitespace, semicolons, pipe/redirect chars
+  const re = /(?:^|\s)(\.{1,2}\/[^\s;|&><"']*|\/[^\s;|&><"']+|~\/[^\s;|&><"']*)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(command)) !== null) {
+    const tok = m[1].replace(/['"]+$/g, "").trim(); // strip trailing quotes
+    if (tok) results.push(tok);
+  }
+  return results;
+}
+
 /** Check whether an absolute, normalized path is inside any workspace root. */
 function isInsideWorkspace(absPath: string, workspacePaths: string[]): boolean {
   const normalized = normalizePath(absPath);
@@ -105,21 +124,35 @@ function matchesRule(
   // --- Path pattern matching ---
   if (match.pathPatterns && match.pathPatterns.length > 0) {
     hasChecker = true;
-    const rawPath = typeof input.path === "string" ? input.path : "";
-    if (!rawPath) return false;
 
-    const testPath = match.pathRelative
-      ? rawPath
-      : normalizePath(resolve(cwd, rawPath));
+    let pathsToCheck: string[];
 
-    const matched = match.pathPatterns.some((p) => {
-      try {
-        return new RegExp(p, "i").test(testPath);
-      } catch(err) {
-        console.warn(`[pi-sentinel] Invalid command pattern: ${p}`, err);
-        return false;
-      }
-    });
+    if (toolName === "bash") {
+      // For bash, pathPatterns are matched against paths extracted from the command
+      // (hybrid rules: allow/deny a command only for a specific folder).
+      const command = typeof input.command === "string" ? input.command : "";
+      const extracted = extractPathsFromBashCommand(command);
+      if (extracted.length === 0) return false;
+      pathsToCheck = extracted.map((p) => normalizePath(resolve(cwd, p)));
+    } else {
+      const rawPath = typeof input.path === "string" ? input.path : "";
+      if (!rawPath) return false;
+      const testPath = match.pathRelative
+        ? rawPath
+        : normalizePath(resolve(cwd, rawPath));
+      pathsToCheck = [testPath];
+    }
+
+    const matched = pathsToCheck.some((testPath) =>
+      match.pathPatterns!.some((p) => {
+        try {
+          return new RegExp(p, "i").test(testPath);
+        } catch (err) {
+          console.warn(`[pi-sentinel] Invalid path pattern: ${p}`, err);
+          return false;
+        }
+      })
+    );
     if (!matched) return false;
   }
 

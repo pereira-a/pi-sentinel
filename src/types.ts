@@ -126,6 +126,34 @@ export interface UserConfig {
 // Runtime audit log entry
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Prompt result — returned by the 3-layer dialog in prompt.ts
+// ---------------------------------------------------------------------------
+
+/**
+ * What the user decided in the prompt dialog.
+ *
+ * persist: false  → one-time decision, no rule written or cached
+ * persist: true   → a scoped rule is created and stored at `persistence` level
+ *
+ * scope values:
+ *   "command"            bash: allow/deny the matched command pattern everywhere
+ *   "command-in-folder"  bash: allow/deny only when the command targets `targetPath`
+ *   "file"               path tool: allow/deny access to the exact file at `targetPath`
+ *   "folder"             path tool: allow/deny access to the folder tree at `targetPath`
+ *
+ * targetPath is null only for scope === "command".
+ */
+export type PromptResult =
+  | { action: "allow" | "deny"; persist: false }
+  | {
+      action: "allow" | "deny";
+      persist: true;
+      scope: "command" | "command-in-folder" | "file" | "folder";
+      persistence: "local" | "session" | "global";
+      targetPath: string | null;
+    };
+
 export type AuditAction =
   | "allowed"
   | "denied"
