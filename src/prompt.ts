@@ -93,7 +93,8 @@ export function buildScopedRule(
   }
 
   if (scope === "command-in-folder") {
-    if (!targetPath) throw new Error("targetPath required for command-in-folder scope");
+    if (!targetPath)
+      throw new Error("targetPath required for command-in-folder scope");
     return {
       id,
       description,
@@ -144,17 +145,20 @@ async function showLayer3(
   ctx: ExtensionContext,
 ): Promise<"local" | "session" | "global" | null> {
   const theme = ctx.ui.theme;
-  const title = theme.fg("warning", `Where should this ${action} rule be saved?`);
+  const title = theme.fg(
+    "warning",
+    `Where should this ${action} rule be saved?`,
+  );
 
-  const LOCAL   = "Local  (this project only)";
-  const SESSION = "Session  (this session, recoverable)";
-  const GLOBAL  = "Global  (all projects, permanent)";
+  const LOCAL = "Local    (in this workspace)";
+  const SESSION = "Session  (during this session)";
+  const GLOBAL = "Global   (across all sessions/workspaces)";
 
-  const choice = await ctx.ui.select(title, [LOCAL, SESSION, GLOBAL]);
+  const choice = await ctx.ui.select(title, [SESSION, LOCAL, GLOBAL]);
 
-  if (choice === LOCAL)   return "local";
+  if (choice === LOCAL) return "local";
   if (choice === SESSION) return "session";
-  if (choice === GLOBAL)  return "global";
+  if (choice === GLOBAL) return "global";
   return null; // cancelled
 }
 
@@ -168,9 +172,15 @@ async function showLayer2Bash(
   command: string,
   cwd: string,
   ctx: ExtensionContext,
-): Promise<{ scope: "command" | "command-in-folder"; targetPath: string | null } | null> {
+): Promise<{
+  scope: "command" | "command-in-folder";
+  targetPath: string | null;
+} | null> {
   const theme = ctx.ui.theme;
-  const title = theme.fg("warning", `${action === "allow" ? "Allow" : "Deny"} which scope?`);
+  const title = theme.fg(
+    "warning",
+    `${action === "allow" ? "Allow" : "Deny"} which scope?`,
+  );
 
   const THIS_CMD = "This command  (anywhere)";
 
@@ -189,9 +199,7 @@ async function showLayer2Bash(
     folderOption = `This command in  ./${displayFolder}`;
   }
 
-  const options = folderOption
-    ? [THIS_CMD, folderOption]
-    : [THIS_CMD];
+  const options = folderOption ? [THIS_CMD, folderOption] : [THIS_CMD];
 
   const choice = await ctx.ui.select(title, options);
   if (!choice) return null;
@@ -206,31 +214,35 @@ async function showLayer2Path(
   cwd: string,
   ctx: ExtensionContext,
 ): Promise<{ scope: "file" | "folder"; targetPath: string } | null> {
+  // TODO: refactor layer 2 => mention tool, command, etc...
   const theme = ctx.ui.theme;
-  const title = theme.fg("warning", `${action === "allow" ? "Allow" : "Deny"} which scope?`);
+  const title = theme.fg(
+    "warning",
+    `${action === "allow" ? "Allow" : "Deny"} which scope?`,
+  );
 
   const absPath = resolve(cwd, rawPath);
   const fileName = basename(absPath);
   const folderName = basename(dirname(absPath));
 
-  const FILE_OPT   = `This file    (${fileName})`;
+  const FILE_OPT = `This file    (${fileName})`;
   const FOLDER_OPT = `This folder  (${folderName}/)`;
 
   const choice = await ctx.ui.select(title, [FILE_OPT, FOLDER_OPT]);
   if (!choice) return null;
 
-  if (choice === FILE_OPT)   return { scope: "file",   targetPath: absPath };
-  return                              { scope: "folder", targetPath: dirname(absPath) };
+  if (choice === FILE_OPT) return { scope: "file", targetPath: absPath };
+  return { scope: "folder", targetPath: dirname(absPath) };
 }
 
 // ---------------------------------------------------------------------------
 // Layer 1: action + timing
 // ---------------------------------------------------------------------------
 
-const ALLOW_ONCE  = "Allow once";
-const DENY_ONCE   = "Deny once";
-const ALLOW_MORE  = "Allow\u2026";
-const DENY_MORE   = "Deny\u2026";
+const ALLOW_ONCE = "Allow once";
+const DENY_ONCE = "Deny once";
+const ALLOW_MORE = "Allow\u2026";
+const DENY_MORE = "Deny\u2026";
 
 // ---------------------------------------------------------------------------
 // Main entry point
@@ -256,14 +268,25 @@ export async function promptAction(
 ): Promise<PromptResult> {
   const theme = ctx.ui.theme;
 
-  // Build Layer 1 title with description + subject
-  const displaySubject =
-    subject.length > 100 ? subject.slice(0, 97) + "..." : subject;
+  // TODO: make layers navigable (back/forward) instead of linear flow (using tab)
+
+  let description =
+    "\n" + theme.fg("text", `Tool: `) + theme.fg("muted", `${toolName}\n`);
+  if (toolName === "bash") {
+    const path = extractPathsFromBashCommand(subject);
+    description +=
+      theme.fg("text", `Command: `) + theme.fg("muted", `${subject}\n`);
+    if (path.length > 0) {
+      description +=
+        theme.fg("text", `Path: `) + theme.fg("muted", `${path}\n`);
+    }
+  } else {
+    description +=
+      theme.fg("text", `Path: `) + theme.fg("muted", `${subject}\n`);
+  }
+
   const title =
-    theme.fg("warning", `⚠️  Sentinel: ${rule.description}`) +
-    "\n" +
-    theme.fg("dim", displaySubject) +
-    "\n";
+    theme.fg("warning", `⚠️  Sentinel: Action blocked`) + "\n" + description;
 
   // --- Layer 1 ---
   const layer1 = await ctx.ui.select(title, [
@@ -277,7 +300,7 @@ export async function promptAction(
   if (!layer1) return { action: "deny", persist: false };
 
   if (layer1 === ALLOW_ONCE) return { action: "allow", persist: false };
-  if (layer1 === DENY_ONCE)  return { action: "deny",  persist: false };
+  if (layer1 === DENY_ONCE) return { action: "deny", persist: false };
 
   const action: "allow" | "deny" = layer1 === ALLOW_MORE ? "allow" : "deny";
 
