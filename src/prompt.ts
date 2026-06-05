@@ -19,6 +19,7 @@ import { statSync } from "node:fs";
 import { resolve, basename, dirname } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Rule, PromptResult } from "./types";
+import { SCOPE, PERSISTENCE, ACTION, TOOL } from "./types";
 import { extractPathsFromBashCommand } from "./rule-engine";
 
 // ---------------------------------------------------------------------------
@@ -79,7 +80,7 @@ export function buildScopedRule(
   const id = `user.${action}.${baseRule.id}.${timestamp}`;
   const description = `User-${action}: ${baseRule.description}`;
 
-  if (scope === "command") {
+  if (scope === SCOPE.COMMAND) {
     return {
       id,
       description,
@@ -92,7 +93,7 @@ export function buildScopedRule(
     };
   }
 
-  if (scope === "command-in-folder") {
+  if (scope === SCOPE.COMMAND_IN_FOLDER) {
     if (!targetPath)
       throw new Error("targetPath required for command-in-folder scope");
     return {
@@ -108,7 +109,7 @@ export function buildScopedRule(
     };
   }
 
-  if (scope === "file") {
+  if (scope === SCOPE.FILE) {
     if (!targetPath) throw new Error("targetPath required for file scope");
     return {
       id,
@@ -122,7 +123,7 @@ export function buildScopedRule(
     };
   }
 
-  // scope === "folder"
+  // scope === SCOPE.FOLDER
   if (!targetPath) throw new Error("targetPath required for folder scope");
   return {
     id,
@@ -157,9 +158,9 @@ async function showLayer3(
 
   const choice = await ctx.ui.select(title, [SESSION, LOCAL, GLOBAL]);
 
-  if (choice === LOCAL) return "local";
-  if (choice === SESSION) return "session";
-  if (choice === GLOBAL) return "global";
+  if (choice === LOCAL) return PERSISTENCE.LOCAL;
+  if (choice === SESSION) return PERSISTENCE.SESSION;
+  if (choice === GLOBAL) return PERSISTENCE.GLOBAL;
   return null; // cancelled
 }
 
@@ -205,12 +206,12 @@ async function showLayer2Bash(
     label: string;
     scope: "command" | "command-in-folder";
     targetPath: string | null;
-  }> = [{ label: "Anywhere", scope: "command", targetPath: null }];
+  }> = [{ label: "Anywhere", scope: SCOPE.COMMAND, targetPath: null }];
 
   if (displayFolder) {
     options.push({
       label: `Here:  ./${displayFolder}`,
-      scope: "command-in-folder",
+      scope: SCOPE.COMMAND_IN_FOLDER,
       targetPath: resolvedFolder,
     });
   }
@@ -251,10 +252,14 @@ async function showLayer2Path(
     scope: "file" | "folder";
     targetPath: string;
   }> = [
-    { label: `This file    (${fileName})`, scope: "file", targetPath: absPath },
+    {
+      label: `This file    (${fileName})`,
+      scope: SCOPE.FILE,
+      targetPath: absPath,
+    },
     {
       label: `This folder  (${folderName}/)`,
-      scope: "folder",
+      scope: SCOPE.FOLDER,
       targetPath: dirname(absPath),
     },
   ];
@@ -308,7 +313,7 @@ export async function promptAction(
 
   let description =
     "\n" + theme.fg("text", `Tool: `) + theme.fg("muted", `${toolName}\n`);
-  if (toolName === "bash") {
+  if (toolName === TOOL.BASH) {
     const path = extractPathsFromBashCommand(subject);
     description +=
       theme.fg("text", `Command: `) + theme.fg("muted", `${subject}\n`);
@@ -335,30 +340,32 @@ export async function promptAction(
   ]);
 
   // Escape / cancel → default to deny-once
-  if (!layer1) return { action: "deny", persist: false };
+  if (!layer1) return { action: ACTION.DENY, persist: false };
 
-  if (layer1 === ALLOW_ONCE) return { action: "allow", persist: false };
-  if (layer1 === DENY_ONCE) return { action: "deny", persist: false };
+  if (layer1 === ALLOW_ONCE) return { action: ACTION.ALLOW, persist: false };
+  if (layer1 === DENY_ONCE) return { action: ACTION.DENY, persist: false };
 
-  const action: "allow" | "deny" = layer1 === ALLOW_MORE ? "allow" : "deny";
+  const action: "allow" | "deny" =
+    layer1 === ALLOW_MORE ? ACTION.ALLOW : ACTION.DENY;
 
   // --- Layer 2: scope ---
   let scope: "command" | "command-in-folder" | "file" | "folder";
   let targetPath: string | null = null;
 
   // TODO: skip layer two if bash has no file path
-  if (toolName === "bash") {
+  if (toolName === TOOL.BASH) {
     const command = typeof input.command === "string" ? input.command : "";
     const layer2 =
       extractPathsFromBashCommand(subject).length > 0
         ? await showLayer2Bash(action, rule, command, cwd, description, ctx)
-        : ({ scope: "command", targetPath: null } as const);
+        : ({ scope: SCOPE.COMMAND, targetPath: null } as const);
     if (!layer2) return { action, persist: false }; // cancelled → treat as once
     scope = layer2.scope;
     targetPath = layer2.targetPath;
   } else {
     const rawPath = typeof input.path === "string" ? input.path : subject;
     const layer2 = await showLayer2Path(action, rawPath, cwd, description, ctx);
+    // TODO: should not be trated as 'allow'
     if (!layer2) return { action, persist: false }; // cancelled → treat as once
     scope = layer2.scope;
     targetPath = layer2.targetPath;
@@ -366,6 +373,7 @@ export async function promptAction(
 
   // --- Layer 3: persistence ---
   const persistence = await showLayer3(action, description, ctx);
+  // TODO: should not be trated as 'allow'
   if (!persistence) return { action, persist: false }; // cancelled → treat as once
 
   return {

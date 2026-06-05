@@ -3,17 +3,46 @@
  */
 
 // ---------------------------------------------------------------------------
-// Tool names
+// Domain constants
 // ---------------------------------------------------------------------------
 
-export type ToolName =
-  | "bash"
-  | "read"
-  | "write"
-  | "edit"
-  | "grep"
-  | "find"
-  | "ls";
+export const TOOL = {
+  BASH: "bash",
+  READ: "read",
+  WRITE: "write",
+  EDIT: "edit",
+  GREP: "grep",
+  FIND: "find",
+  LS: "ls",
+} as const;
+
+export const ACTION = {
+  ALLOW: "allow",
+  DENY: "deny",
+  ASK: "ask",
+} as const;
+
+export const SCOPE = {
+  COMMAND: "command",
+  COMMAND_IN_FOLDER: "command-in-folder",
+  FILE: "file",
+  FOLDER: "folder",
+} as const;
+
+export const PERSISTENCE = {
+  LOCAL: "local",
+  SESSION: "session",
+  GLOBAL: "global",
+} as const;
+
+// ---------------------------------------------------------------------------
+// Derived types
+// ---------------------------------------------------------------------------
+
+export type ToolName = (typeof TOOL)[keyof typeof TOOL];
+export type RuleVerdict = (typeof ACTION)[keyof typeof ACTION];
+export type Scope = (typeof SCOPE)[keyof typeof SCOPE];
+export type PersistenceLevel = (typeof PERSISTENCE)[keyof typeof PERSISTENCE];
 
 // ---------------------------------------------------------------------------
 // Rule schema
@@ -62,7 +91,7 @@ export interface Rule {
    *   ask   - show allow/deny dialog to the user
    *   allow - pass through silently (used for explicit allow overrides)
    */
-  action: "deny" | "ask" | "allow";
+  action: RuleVerdict;
 
   /**
    * Which tool(s) this rule applies to.
@@ -101,7 +130,7 @@ export interface SentinelConfig {
    *   "allow" - pass through silently (least intrusive)
    *   "ask"   - prompt for every unmatched call (strict mode, default)
    */
-  defaultAction: "allow" | "ask";
+  defaultAction: typeof ACTION.ALLOW | typeof ACTION.ASK;
 }
 
 // ---------------------------------------------------------------------------
@@ -119,7 +148,7 @@ export interface UserConfig {
   rules?: Array<{ id: string } & Partial<Omit<Rule, "id">>>;
   /** Extra workspace paths appended to the effective list. */
   workspacePaths?: string[];
-  defaultAction?: "allow" | "ask";
+  defaultAction?: typeof ACTION.ALLOW | typeof ACTION.ASK;
 }
 
 // ---------------------------------------------------------------------------
@@ -145,12 +174,12 @@ export interface UserConfig {
  * targetPath is null only for scope === "command".
  */
 export type PromptResult =
-  | { action: "allow" | "deny"; persist: false }
+  | { action: typeof ACTION.ALLOW | typeof ACTION.DENY; persist: false }
   | {
-      action: "allow" | "deny";
+      action: typeof ACTION.ALLOW | typeof ACTION.DENY;
       persist: true;
-      scope: "command" | "command-in-folder" | "file" | "folder";
-      persistence: "local" | "session" | "global";
+      scope: Scope;
+      persistence: PersistenceLevel;
       targetPath: string | null;
     };
 
