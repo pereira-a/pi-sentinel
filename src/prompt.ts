@@ -142,12 +142,13 @@ export function buildScopedRule(
 
 async function showLayer3(
   action: "allow" | "deny",
+  description: string,
   ctx: ExtensionContext,
 ): Promise<"local" | "session" | "global" | null> {
   const theme = ctx.ui.theme;
   const title = theme.fg(
     "warning",
-    `Where should this ${action} rule be saved?`,
+    `Where should this ${action} rule be saved?\n` + description,
   );
 
   const LOCAL = "Local    (in this workspace)";
@@ -364,7 +365,7 @@ export async function promptAction(
   }
 
   // --- Layer 3: persistence ---
-  const persistence = await showLayer3(action, ctx);
+  const persistence = await showLayer3(action, description, ctx);
   if (!persistence) return { action, persist: false }; // cancelled → treat as once
 
   return {
