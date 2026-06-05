@@ -171,22 +171,21 @@ async function showLayer2Bash(
   baseRule: Rule,
   command: string,
   cwd: string,
+  description: string,
   ctx: ExtensionContext,
 ): Promise<{
   scope: "command" | "command-in-folder";
   targetPath: string | null;
 } | null> {
   const theme = ctx.ui.theme;
-  const title = theme.fg(
-    "warning",
-    `${action === "allow" ? "Allow" : "Deny"} which scope?`,
-  );
-
-  const THIS_CMD = "This command  (anywhere)";
+  const body =
+    theme.fg(
+      "warning",
+      `${action === "allow" ? "Allow" : "Deny"} this command where?\n`,
+    ) + description;
 
   // Try to find a folder from the command
   const rawPaths = extractPathsFromBashCommand(command);
-  let folderOption: string | null = null;
   let resolvedFolder: string | null = null;
 
   if (rawPaths.length > 0) {
@@ -195,44 +194,80 @@ async function showLayer2Bash(
     const abs = resolve(cwd, lastRaw);
     // If it looks like a file, use its parent directory
     resolvedFolder = isDirectory(abs) ? abs : dirname(abs);
-    const displayFolder = fwd(resolvedFolder).split("/").slice(-2).join("/");
-    folderOption = `This command in  ./${displayFolder}`;
   }
 
-  const options = folderOption ? [THIS_CMD, folderOption] : [THIS_CMD];
+  const displayFolder = resolvedFolder
+    ? fwd(resolvedFolder).split("/").slice(-2).join("/")
+    : null;
 
-  const choice = await ctx.ui.select(title, options);
+  const options: Array<{
+    label: string;
+    scope: "command" | "command-in-folder";
+    targetPath: string | null;
+  }> = [{ label: "Anywhere", scope: "command", targetPath: null }];
+
+  if (displayFolder) {
+    options.push({
+      label: `Here:  ./${displayFolder}`,
+      scope: "command-in-folder",
+      targetPath: resolvedFolder,
+    });
+  }
+
+  const choice = await ctx.ui.select(
+    body,
+    options.map((o) => o.label),
+  );
   if (!choice) return null;
 
-  if (choice === THIS_CMD) return { scope: "command", targetPath: null };
-  return { scope: "command-in-folder", targetPath: resolvedFolder };
+  const selected = options.find((o) => o.label === choice);
+  if (!selected) return null;
+
+  return { scope: selected.scope, targetPath: selected.targetPath };
 }
 
 async function showLayer2Path(
   action: "allow" | "deny",
   rawPath: string,
   cwd: string,
+  description: string,
   ctx: ExtensionContext,
-): Promise<{ scope: "file" | "folder"; targetPath: string } | null> {
-  // TODO: refactor layer 2 => mention tool, command, etc...
+): Promise<{
+  scope: "file" | "folder";
+  targetPath: string;
+} | null> {
   const theme = ctx.ui.theme;
-  const title = theme.fg(
-    "warning",
-    `${action === "allow" ? "Allow" : "Deny"} which scope?`,
-  );
+  const body =
+    theme.fg("warning", `${action === "allow" ? "Allow" : "Deny"} where?\n`) +
+    description;
 
   const absPath = resolve(cwd, rawPath);
   const fileName = basename(absPath);
   const folderName = basename(dirname(absPath));
 
-  const FILE_OPT = `This file    (${fileName})`;
-  const FOLDER_OPT = `This folder  (${folderName}/)`;
+  const options: Array<{
+    label: string;
+    scope: "file" | "folder";
+    targetPath: string;
+  }> = [
+    { label: `This file    (${fileName})`, scope: "file", targetPath: absPath },
+    {
+      label: `This folder  (${folderName}/)`,
+      scope: "folder",
+      targetPath: dirname(absPath),
+    },
+  ];
 
-  const choice = await ctx.ui.select(title, [FILE_OPT, FOLDER_OPT]);
+  const choice = await ctx.ui.select(
+    body,
+    options.map((o) => o.label),
+  );
   if (!choice) return null;
 
-  if (choice === FILE_OPT) return { scope: "file", targetPath: absPath };
-  return { scope: "folder", targetPath: dirname(absPath) };
+  const selected = options.find((o) => o.label === choice);
+  if (!selected) return null;
+
+  return { scope: selected.scope, targetPath: selected.targetPath };
 }
 
 // ---------------------------------------------------------------------------
@@ -285,11 +320,13 @@ export async function promptAction(
       theme.fg("text", `Path: `) + theme.fg("muted", `${subject}\n`);
   }
 
-  const title =
-    theme.fg("warning", `⚠️  Sentinel: Action blocked`) + "\n" + description;
+  const body =
+    theme.fg("warning", `⚠️  Sentinel: Action blocked. How to proceed?`) +
+    "\n" +
+    description;
 
   // --- Layer 1 ---
-  const layer1 = await ctx.ui.select(title, [
+  const layer1 = await ctx.ui.select(body, [
     ALLOW_ONCE,
     DENY_ONCE,
     ALLOW_MORE,
@@ -308,15 +345,23 @@ export async function promptAction(
   let scope: "command" | "command-in-folder" | "file" | "folder";
   let targetPath: string | null = null;
 
+  // TODO: skip layer two if bash has no file path
   if (toolName === "bash") {
     const command = typeof input.command === "string" ? input.command : "";
-    const layer2 = await showLayer2Bash(action, rule, command, cwd, ctx);
+    const layer2 = await showLayer2Bash(
+      action,
+      rule,
+      command,
+      cwd,
+      description,
+      ctx,
+    );
     if (!layer2) return { action, persist: false }; // cancelled → treat as once
     scope = layer2.scope;
     targetPath = layer2.targetPath;
   } else {
     const rawPath = typeof input.path === "string" ? input.path : subject;
-    const layer2 = await showLayer2Path(action, rawPath, cwd, ctx);
+    const layer2 = await showLayer2Path(action, rawPath, cwd, description, ctx);
     if (!layer2) return { action, persist: false }; // cancelled → treat as once
     scope = layer2.scope;
     targetPath = layer2.targetPath;
