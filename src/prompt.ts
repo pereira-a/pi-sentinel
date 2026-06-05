@@ -149,7 +149,7 @@ async function showLayer3(
   const theme = ctx.ui.theme;
   const title = theme.fg(
     "warning",
-    `Where should this ${action} rule be saved?\n` + description,
+    `Save this decision...\n` + description,
   );
 
   const LOCAL = "Local    (in this workspace)";
@@ -180,11 +180,7 @@ async function showLayer2Bash(
   targetPath: string | null;
 } | null> {
   const theme = ctx.ui.theme;
-  const body =
-    theme.fg(
-      "warning",
-      `${action === "allow" ? "Allow" : "Deny"} this command where?\n`,
-    ) + description;
+  const body = theme.fg("warning", `Remember this for...\n`) + description;
 
   // Try to find a folder from the command
   const rawPaths = extractPathsFromBashCommand(command);
@@ -206,11 +202,11 @@ async function showLayer2Bash(
     label: string;
     scope: "command" | "command-in-folder";
     targetPath: string | null;
-  }> = [{ label: "Anywhere", scope: SCOPE.COMMAND, targetPath: null }];
+  }> = [{ label: "Any folder", scope: SCOPE.COMMAND, targetPath: null }];
 
   if (displayFolder) {
     options.push({
-      label: `Here:  ./${displayFolder}`,
+      label: `Only in ./${displayFolder}`,
       scope: SCOPE.COMMAND_IN_FOLDER,
       targetPath: resolvedFolder,
     });
@@ -239,9 +235,7 @@ async function showLayer2Path(
   targetPath: string;
 } | null> {
   const theme = ctx.ui.theme;
-  const body =
-    theme.fg("warning", `${action === "allow" ? "Allow" : "Deny"} where?\n`) +
-    description;
+  const body = theme.fg("warning", `Remember this for...\n`) + description;
 
   const absPath = resolve(cwd, rawPath);
   const fileName = basename(absPath);
@@ -252,13 +246,9 @@ async function showLayer2Path(
     scope: "file" | "folder";
     targetPath: string;
   }> = [
+    { label: `This file (${fileName})`, scope: SCOPE.FILE, targetPath: absPath },
     {
-      label: `This file    (${fileName})`,
-      scope: SCOPE.FILE,
-      targetPath: absPath,
-    },
-    {
-      label: `This folder  (${folderName}/)`,
+      label: `This folder (${folderName}/)`,
       scope: SCOPE.FOLDER,
       targetPath: dirname(absPath),
     },
@@ -281,9 +271,9 @@ async function showLayer2Path(
 // ---------------------------------------------------------------------------
 
 const ALLOW_ONCE = "Allow once";
+const ALLOW_MORE = "Allow and remember\u2026";
 const DENY_ONCE = "Deny once";
-const ALLOW_MORE = "Allow\u2026";
-const DENY_MORE = "Deny\u2026";
+const DENY_MORE = "Deny and remember\u2026";
 
 // ---------------------------------------------------------------------------
 // Main entry point
@@ -334,8 +324,8 @@ export async function promptAction(
   // --- Layer 1 ---
   const layer1 = await ctx.ui.select(body, [
     ALLOW_ONCE,
-    DENY_ONCE,
     ALLOW_MORE,
+    DENY_ONCE,
     DENY_MORE,
   ]);
 
