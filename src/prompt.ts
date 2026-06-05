@@ -348,14 +348,10 @@ export async function promptAction(
   // TODO: skip layer two if bash has no file path
   if (toolName === "bash") {
     const command = typeof input.command === "string" ? input.command : "";
-    const layer2 = await showLayer2Bash(
-      action,
-      rule,
-      command,
-      cwd,
-      description,
-      ctx,
-    );
+    const layer2 =
+      extractPathsFromBashCommand(subject).length > 0
+        ? await showLayer2Bash(action, rule, command, cwd, description, ctx)
+        : ({ scope: "command", targetPath: null } as const);
     if (!layer2) return { action, persist: false }; // cancelled → treat as once
     scope = layer2.scope;
     targetPath = layer2.targetPath;
