@@ -8,10 +8,13 @@
     "build": "echo 'nothing to build'"
   },
   "pi": {
-    "extensions": ["./index.ts"]
+    "extensions": [
+      "./index.ts"
+    ]
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "^0.78.0",
+    "@earendil-works/pi-tui": "^0.78.1",
     "@types/node": "^20.0.0"
   }
 }

@@ -169,7 +169,7 @@ export async function addRuleToConfigFile(filePath: string, newRule: Rule): Prom
     const rules = Array.isArray(current.rules) ? current.rules : [];
     const updated: UserConfig = {
       ...current,
-      rules: [...rules, { id: newRule.id, ...newRule }],
+      rules: [...rules, { ...newRule }],
     };
     saveUserConfig(filePath, updated);
   });
