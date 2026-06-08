@@ -2,7 +2,11 @@
   "name": "pi-sentinel",
   "private": true,
   "version": "0.1.0",
+  "description": "Safety guard for pi.dev — intercepts dangerous tool calls with configurable rules, user prompts, and audit logging",
   "type": "module",
+  "keywords": [
+    "pi-package"
+  ],
   "scripts": {
     "clean": "echo 'nothing to clean'",
     "build": "echo 'nothing to build'"
@@ -12,9 +16,11 @@
       "./index.ts"
     ]
   },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
+  },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.78.0",
-    "@earendil-works/pi-tui": "^0.78.1",
     "@types/node": "^20.0.0"
   }
 }
