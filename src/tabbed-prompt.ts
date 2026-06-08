@@ -114,8 +114,16 @@ function buildScopeOptions(
   const folderName = basename(dirname(absPath));
 
   return [
-    { label: `This file (${fileName})`, scope: SCOPE.FILE, targetPath: absPath },
-    { label: `This folder (${folderName}/)`, scope: SCOPE.FOLDER, targetPath: dirname(absPath) },
+    {
+      label: `This file (${fileName})`,
+      scope: SCOPE.FILE,
+      targetPath: absPath,
+    },
+    {
+      label: `This folder (${folderName}/)`,
+      scope: SCOPE.FOLDER,
+      targetPath: dirname(absPath),
+    },
   ];
 }
 
@@ -131,7 +139,10 @@ interface PersistOption {
 const PERSIST_OPTIONS: PersistOption[] = [
   { label: "Local    (in this workspace)", value: PERSISTENCE.LOCAL },
   { label: "Session  (during this session)", value: PERSISTENCE.SESSION },
-  { label: "Global   (across all sessions/workspaces)", value: PERSISTENCE.GLOBAL },
+  {
+    label: "Global   (across all sessions/workspaces)",
+    value: PERSISTENCE.GLOBAL,
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -256,10 +267,7 @@ export class WizardPrompt {
       // Proceed to persistence step
       this.step = 2;
       this.persistIdx = 0;
-    } else if (
-      matchesKey(data, Key.left) ||
-      matchesKey(data, Key.backspace)
-    ) {
+    } else if (matchesKey(data, Key.left) || matchesKey(data, Key.backspace)) {
       // Go back to action step
       this.step = 0;
     }
@@ -268,21 +276,14 @@ export class WizardPrompt {
   private handleStep3Input(data: string): void {
     if (matchesKey(data, Key.up)) {
       this.persistIdx =
-        this.persistIdx > 0
-          ? this.persistIdx - 1
-          : PERSIST_OPTIONS.length - 1;
+        this.persistIdx > 0 ? this.persistIdx - 1 : PERSIST_OPTIONS.length - 1;
     } else if (matchesKey(data, Key.down)) {
       this.persistIdx =
-        this.persistIdx < PERSIST_OPTIONS.length - 1
-          ? this.persistIdx + 1
-          : 0;
+        this.persistIdx < PERSIST_OPTIONS.length - 1 ? this.persistIdx + 1 : 0;
     } else if (matchesKey(data, Key.enter)) {
       // Confirm — build and return the result
       this.confirm();
-    } else if (
-      matchesKey(data, Key.left) ||
-      matchesKey(data, Key.backspace)
-    ) {
+    } else if (matchesKey(data, Key.left) || matchesKey(data, Key.backspace)) {
       // Go back to scope step
       this.step = 1;
     }
@@ -344,7 +345,9 @@ export class WizardPrompt {
         if (i < this.step) return t.fg("success", "\u25C6"); // ◆
         return t.fg("dim", "\u25CB"); // ○
       })
-      .join(t.fg("dim", "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"));
+      .join(
+        t.fg("dim", "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"),
+      );
     lines.push("  " + dots);
 
     // Step labels row
@@ -434,23 +437,24 @@ export class WizardPrompt {
     const t = this.opts.theme;
 
     // Build button labels
-    const backBtn = t.fg("muted", "[< Back]");
-    const cancelBtn = t.fg("warning", "[Cancel]");
+    const backBtn = t.fg("muted", "[\u2190 Back]");
+    const nextBtn = t.fg("accent", "[Next \u2192]");
+    const confirmBtn = t.fg("accent", "[Confirm \u2192]");
 
     let navStr: string;
 
     switch (this.step) {
       case 0:
-        // [Next >]  [Cancel]
-        navStr = `${t.fg("accent", "[Next >]")}  ${cancelBtn}`;
+        // [Next ->]
+        navStr = `${nextBtn}`;
         break;
       case 1:
-        // [< Back]  [Next >]  [Cancel]
-        navStr = `${backBtn}  ${t.fg("accent", "[Next >]")}  ${cancelBtn}`;
+        // [<- Back]  [Next ->]
+        navStr = `${backBtn}  ${nextBtn}`;
         break;
       case 2:
-        // [< Back]  [Confirm]  [Cancel]
-        navStr = `${backBtn}  ${t.fg("success", "[Confirm]")}  ${cancelBtn}`;
+        // [<- Back]  [Confirm ->]
+        navStr = `${backBtn}  ${confirmBtn}`;
         break;
     }
 
@@ -462,7 +466,7 @@ export class WizardPrompt {
     // Help text
     const help = t.fg(
       "dim",
-      "\u2191\u2195 navigate  Enter select  \u2190 back  Esc cancel",
+      "\u2191\u2195 navigate | Enter/\u2192 select | Esc cancel",
     );
     const helpPad = Math.max(0, Math.floor((width - visibleWidth(help)) / 2));
     lines.push(" ".repeat(helpPad) + help);
