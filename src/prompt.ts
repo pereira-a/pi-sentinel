@@ -185,6 +185,8 @@ export async function promptAction(
   const result = await ctx.ui.custom<PromptResult | null>(
     (tui, wizardTheme, _kb, done) => {
       const wizard = new WizardPrompt({
+        title: "pi-sentinel",
+        reason: rule.description,
         description,
         toolName,
         subject,

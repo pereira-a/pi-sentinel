@@ -156,6 +156,10 @@ const STEP_LABELS = ["Action", "Scope", "Save"];
 // ---------------------------------------------------------------------------
 
 export interface WizardPromptOptions {
+  /** Extension name displayed as the prompt title. */
+  title: string;
+  /** One-line explanation of why the prompt was triggered. */
+  reason: string;
   /** Themed description string (tool, command, path info). */
   description: string;
   /** Which tool triggered the prompt. */
@@ -335,35 +339,47 @@ export class WizardPrompt {
     const contentWidth = width - 2; // reserve columns for left/right border
     const lines: string[] = [];
 
-    // --- Step indicator ---
-    const stepLabel = `Step ${this.step + 1} of 3: ${STEP_LABELS[this.step]}`;
-    lines.push(t.fg("accent", t.bold(stepLabel)));
+    // --- Centered helper ---
+    const center = (text: string): string => {
+      const pad = Math.max(
+        0,
+        Math.floor((contentWidth - visibleWidth(text)) / 2),
+      );
+      return " ".repeat(pad) + text;
+    };
 
+    // --- Title + reason on one line (centered) ---
+    const titleLine =
+      t.fg("warning", t.bold(this.opts.title)) +
+      t.fg("text", ": ") +
+      t.fg("dim", this.opts.reason);
+    lines.push(center(titleLine));
+    lines.push("");
+
+    // --- Step indicator (centered) ---
     // Progress dots: ● = current, ◆ = completed, ○ = future
     const dots = [0, 1, 2]
       .map((i) => {
-        if (i === this.step) return t.fg("accent", "\u25CF"); // ●
+        if (i === this.step) return t.fg("warning", "\u25CF"); // ●
         if (i < this.step) return t.fg("success", "\u25C6"); // ◆
         return t.fg("dim", "\u25CB"); // ○
       })
       .join(
         t.fg("dim", "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"),
       );
-    lines.push("  " + dots);
+    lines.push(center(dots));
 
     // Step labels row
     const labelRow = STEP_LABELS.map((label, i) => {
-      if (i === this.step) return t.fg("accent", t.bold(label));
+      if (i === this.step) return t.fg("warning", t.bold(label));
       if (i < this.step) return t.fg("success", label);
       return t.fg("dim", label);
     }).join(t.fg("dim", "    "));
-    lines.push("  " + labelRow);
+    lines.push(center(labelRow));
 
     lines.push(""); // spacer
 
     // --- Description ---
-    // Strip existing theme from description (it was pre-themed in promptAction)
-    // and re-wrap. We just render it as-is since it already has ANSI codes.
     const descLines = this.opts.description.split("\n");
     for (const dl of descLines) {
       if (dl.trim()) {
@@ -405,10 +421,10 @@ export class WizardPrompt {
     const t = this.opts.theme;
     for (let i = 0; i < ACTION_OPTIONS.length; i++) {
       const opt = ACTION_OPTIONS[i];
-      const prefix = i === this.actionIdx ? t.fg("accent", "\u276F ") : "  "; // ❯
+      const prefix = i === this.actionIdx ? t.fg("warning", "\u276F ") : "  "; // ❯
       const label =
         i === this.actionIdx
-          ? t.fg("accent", opt.label)
+          ? t.fg("warning", opt.label)
           : t.fg("text", opt.label);
       lines.push(prefix + label);
     }
@@ -418,10 +434,10 @@ export class WizardPrompt {
     const t = this.opts.theme;
     for (let i = 0; i < this.scopeOptions.length; i++) {
       const opt = this.scopeOptions[i];
-      const prefix = i === this.scopeIdx ? t.fg("accent", "\u276F ") : "  ";
+      const prefix = i === this.scopeIdx ? t.fg("warning", "\u276F ") : "  ";
       const label =
         i === this.scopeIdx
-          ? t.fg("accent", opt.label)
+          ? t.fg("warning", opt.label)
           : t.fg("text", opt.label);
       lines.push(prefix + label);
     }
@@ -431,10 +447,10 @@ export class WizardPrompt {
     const t = this.opts.theme;
     for (let i = 0; i < PERSIST_OPTIONS.length; i++) {
       const opt = PERSIST_OPTIONS[i];
-      const prefix = i === this.persistIdx ? t.fg("accent", "\u276F ") : "  ";
+      const prefix = i === this.persistIdx ? t.fg("warning", "\u276F ") : "  ";
       const label =
         i === this.persistIdx
-          ? t.fg("accent", opt.label)
+          ? t.fg("warning", opt.label)
           : t.fg("text", opt.label);
       lines.push(prefix + label);
     }
@@ -451,17 +467,23 @@ export class WizardPrompt {
     }
 
     // Top border: ╔═...═╗
-    result.push(yellow("\u2554") + yellow("\u2550").repeat(borderW) + yellow("\u2557"));
+    result.push(
+      yellow("\u2554") + yellow("\u2550").repeat(borderW) + yellow("\u2557"),
+    );
 
     // Content lines with side borders: ║ ... ║
     for (const line of content) {
       const visLen = visibleWidth(line);
       const padNeeded = Math.max(0, borderW - visLen);
-      result.push(yellow("\u2551") + line + " ".repeat(padNeeded) + yellow("\u2551"));
+      result.push(
+        yellow("\u2551") + line + " ".repeat(padNeeded) + yellow("\u2551"),
+      );
     }
 
     // Bottom border: ╚═...═╝
-    result.push(yellow("\u255a") + yellow("\u2550").repeat(borderW) + yellow("\u255d"));
+    result.push(
+      yellow("\u255a") + yellow("\u2550").repeat(borderW) + yellow("\u255d"),
+    );
 
     return result;
   }
@@ -471,8 +493,8 @@ export class WizardPrompt {
 
     // Build button labels
     const backBtn = t.fg("muted", "[\u2190 Back]");
-    const nextBtn = t.fg("accent", "[Next \u2192]");
-    const confirmBtn = t.fg("accent", "[Confirm \u2192]");
+    const nextBtn = t.fg("warning", "[Next \u2192]");
+    const confirmBtn = t.fg("warning", "[Confirm \u2192]");
 
     let navStr: string;
 
