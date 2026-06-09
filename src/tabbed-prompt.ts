@@ -332,6 +332,7 @@ export class WizardPrompt {
     }
 
     const t = this.opts.theme;
+    const contentWidth = width - 2; // reserve columns for left/right border
     const lines: string[] = [];
 
     // --- Step indicator ---
@@ -386,12 +387,18 @@ export class WizardPrompt {
 
     lines.push(""); // spacer
 
-    // --- Navigation bar ---
-    this.renderNavBar(lines, width);
+    // --- Navigation bar (center within content width) ---
+    this.renderNavBar(lines, contentWidth);
+
+    // --- Wrap everything in a yellow border ---
+    // Add a blank line at top and bottom for inner padding
+    lines.unshift("");
+    lines.push("");
+    const bordered = this.applyBorder(lines, width);
 
     this.cachedWidth = width;
-    this.cachedLines = lines;
-    return lines;
+    this.cachedLines = bordered;
+    return bordered;
   }
 
   private renderStep1(lines: string[], _width: number): void {
@@ -431,6 +438,32 @@ export class WizardPrompt {
           : t.fg("text", opt.label);
       lines.push(prefix + label);
     }
+  }
+
+  /** Wrap content lines with a closed yellow rectangle border. */
+  private applyBorder(content: string[], width: number): string[] {
+    const t = this.opts.theme;
+    const borderW = Math.max(2, width - 2); // inner width between border columns
+    const result: string[] = [];
+
+    function yellow(s: string): string {
+      return t.fg("warning", s);
+    }
+
+    // Top border: ╔═...═╗
+    result.push(yellow("\u2554") + yellow("\u2550").repeat(borderW) + yellow("\u2557"));
+
+    // Content lines with side borders: ║ ... ║
+    for (const line of content) {
+      const visLen = visibleWidth(line);
+      const padNeeded = Math.max(0, borderW - visLen);
+      result.push(yellow("\u2551") + line + " ".repeat(padNeeded) + yellow("\u2551"));
+    }
+
+    // Bottom border: ╚═...═╝
+    result.push(yellow("\u255a") + yellow("\u2550").repeat(borderW) + yellow("\u255d"));
+
+    return result;
   }
 
   private renderNavBar(lines: string[], width: number): void {
