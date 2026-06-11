@@ -25,6 +25,8 @@ export const ACTION = {
 export const SCOPE = {
   COMMAND: "command",
   COMMAND_IN_FOLDER: "command-in-folder",
+  SEGMENT: "segment",
+  SEGMENT_IN_FOLDER: "segment-in-folder",
   FILE: "file",
   FOLDER: "folder",
 } as const;
@@ -54,6 +56,14 @@ export interface RuleMatch {
    * Only relevant when rule.tool is "bash" or "*".
    */
   commandPatterns?: string[];
+
+  /**
+   * Regex patterns matched against individual parsed segments of a bash
+   * command. The incoming command is parsed into segments (split on &&, ||,
+   * ;, and |), and each segment is tested against these patterns.
+   * Only relevant for bash commands.
+   */
+  segmentPatterns?: string[];
 
   /**
    * Patterns matched against the resolved file path.
@@ -181,6 +191,9 @@ export type PromptResult =
       scope: Scope;
       persistence: PersistenceLevel;
       targetPath: string | null;
+      /** Required when scope is "segment" or "segment-in-folder": the
+       *  exact text of the selected segment. */
+      segmentText?: string;
     };
 
 export type AuditAction =

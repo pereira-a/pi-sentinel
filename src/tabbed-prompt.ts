@@ -19,31 +19,12 @@
  *   Global  → ~/.pi/agent/extensions/pi-sentinel/config.json
  */
 
-import { statSync } from "node:fs";
 import { resolve, basename, dirname } from "node:path";
 import { matchesKey, Key, truncateToWidth } from "@earendil-works/pi-tui";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import type { Rule, PromptResult, Scope, PersistenceLevel } from "./types";
 import { SCOPE, PERSISTENCE, ACTION, TOOL } from "./types";
-import { extractPathsFromBashCommand } from "./rule-engine";
-
-// ---------------------------------------------------------------------------
-// Path helpers (duplicated from prompt.ts to keep this file self-contained)
-// ---------------------------------------------------------------------------
-
-/** Normalize path separators to forward slashes. */
-function fwd(p: string): string {
-  return p.replace(/\\/g, "/");
-}
-
-/** Try to determine if a path is a directory. Falls back to false on error. */
-function isDirectory(absPath: string): boolean {
-  try {
-    return statSync(absPath).isDirectory();
-  } catch {
-    return !basename(absPath).includes(".");
-  }
-}
+import type { ParsedSegment } from "./bash-parser";
 
 // ---------------------------------------------------------------------------
 // Action option definitions
@@ -70,38 +51,45 @@ interface ScopeOption {
   label: string;
   scope: Scope;
   targetPath: string | null;
+  /** Set when scope is "segment" or "segment-in-folder". */
+  segmentText?: string;
+  /** If true, this is a visual separator, not a selectable option. */
+  separator?: boolean;
 }
 
+/** Build scope options, including per-segment choices for chained commands. */
 function buildScopeOptions(
   toolName: string,
   subject: string,
   input: Record<string, unknown>,
   cwd: string,
+  parsedSegments: readonly ParsedSegment[] | null,
 ): ScopeOption[] {
   if (toolName === TOOL.BASH) {
-    const rawPaths = extractPathsFromBashCommand(subject);
-    let resolvedFolder: string | null = null;
-
-    if (rawPaths.length > 0) {
-      const lastRaw = rawPaths[rawPaths.length - 1];
-      const abs = resolve(cwd, lastRaw);
-      resolvedFolder = isDirectory(abs) ? abs : dirname(abs);
-    }
-
-    const displayFolder = resolvedFolder
-      ? fwd(resolvedFolder).split("/").slice(-2).join("/")
-      : null;
-
     const options: ScopeOption[] = [
-      { label: "Any folder", scope: SCOPE.COMMAND, targetPath: null },
+      {
+        label: "The entire command",
+        scope: SCOPE.COMMAND,
+        targetPath: null,
+      },
     ];
 
-    if (displayFolder) {
+    // Add per-segment options for chained commands
+    if (parsedSegments && parsedSegments.length > 1) {
       options.push({
-        label: `Only in ./${displayFolder}`,
-        scope: SCOPE.COMMAND_IN_FOLDER,
-        targetPath: resolvedFolder,
+        label: "───── Segments ─────",
+        scope: SCOPE.COMMAND,
+        targetPath: null,
+        separator: true,
       });
+      for (const seg of parsedSegments) {
+        options.push({
+          label: `Segment ${seg.index + 1}`,
+          scope: SCOPE.SEGMENT,
+          targetPath: null,
+          segmentText: seg.text,
+        });
+      }
     }
 
     return options;
@@ -172,6 +160,8 @@ export interface WizardPromptOptions {
   cwd: string;
   /** The matched rule that triggered the prompt. */
   rule: Rule;
+  /** Parsed segments for chained commands, or null if simple. */
+  parsedSegments: readonly ParsedSegment[] | null;
   /** Called with the final PromptResult when the user confirms. */
   onComplete: (result: PromptResult) => void;
   /** Called when the user cancels (escape or cancel button). */
@@ -207,7 +197,11 @@ export class WizardPrompt {
       opts.subject,
       opts.input,
       opts.cwd,
+      opts.parsedSegments,
     );
+
+    // Default to first scope option ("The entire command")
+    this.scopeIdx = 0;
   }
 
   // -----------------------------------------------------------------------
@@ -262,11 +256,15 @@ export class WizardPrompt {
 
   private handleStep2Input(data: string): void {
     if (matchesKey(data, Key.up)) {
-      this.scopeIdx =
-        this.scopeIdx > 0 ? this.scopeIdx - 1 : this.scopeOptions.length - 1;
+      do {
+        this.scopeIdx =
+          this.scopeIdx > 0 ? this.scopeIdx - 1 : this.scopeOptions.length - 1;
+      } while (this.scopeOptions[this.scopeIdx]?.separator);
     } else if (matchesKey(data, Key.down)) {
-      this.scopeIdx =
-        this.scopeIdx < this.scopeOptions.length - 1 ? this.scopeIdx + 1 : 0;
+      do {
+        this.scopeIdx =
+          this.scopeIdx < this.scopeOptions.length - 1 ? this.scopeIdx + 1 : 0;
+      } while (this.scopeOptions[this.scopeIdx]?.separator);
     } else if (matchesKey(data, Key.enter) || matchesKey(data, Key.right)) {
       // Proceed to persistence step
       this.step = 2;
@@ -311,6 +309,7 @@ export class WizardPrompt {
       scope: scopeOption.scope,
       persistence: persistOption.value,
       targetPath: scopeOption.targetPath,
+      segmentText: scopeOption.segmentText,
     });
   }
 
@@ -434,6 +433,10 @@ export class WizardPrompt {
     const t = this.opts.theme;
     for (let i = 0; i < this.scopeOptions.length; i++) {
       const opt = this.scopeOptions[i];
+      if (opt.separator) {
+        lines.push("  " + t.fg("dim", opt.label));
+        continue;
+      }
       const prefix = i === this.scopeIdx ? t.fg("warning", "\u276F ") : "  ";
       const label =
         i === this.scopeIdx
