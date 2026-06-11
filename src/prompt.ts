@@ -24,6 +24,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Rule, PromptResult } from "./types";
 import { SCOPE, ACTION, TOOL } from "./types";
 import { extractPathsFromBashCommand } from "./rule-engine";
+import { parseBashCommand } from "./bash-parser";
 import { WizardPrompt } from "./tabbed-prompt";
 
 // ---------------------------------------------------------------------------
@@ -77,22 +78,38 @@ function isDirectory(absPath: string): boolean {
 export function buildScopedRule(
   baseRule: Rule,
   action: "allow" | "deny",
-  scope: "command" | "command-in-folder" | "file" | "folder",
+  scope: "command" | "command-in-folder" | "segment" | "segment-in-folder" | "file" | "folder",
   targetPath: string | null,
   timestamp: number,
+  segmentText?: string,
 ): Rule {
   const id = `user.${action}.${baseRule.id}.${timestamp}`;
   const description = `User-${action}: ${baseRule.description}`;
 
-  if (scope === SCOPE.COMMAND) {
+  if (
+    scope === SCOPE.COMMAND ||
+    scope === SCOPE.SEGMENT
+  ) {
+    if (scope === SCOPE.SEGMENT && !segmentText) {
+      throw new Error("segmentText required for segment scope");
+    }
+
+    const patterns: string[] =
+      scope === SCOPE.SEGMENT
+        ? [segPattern(segmentText!)]
+        : baseRule.match.commandPatterns ?? [];
+
     return {
       id,
       description,
       enabled: true,
       action,
-      tool: baseRule.tool,
+      tool: scope === SCOPE.SEGMENT ? TOOL.BASH : baseRule.tool,
       match: {
-        commandPatterns: baseRule.match.commandPatterns,
+        segmentPatterns:
+          scope === SCOPE.SEGMENT ? patterns : undefined,
+        commandPatterns:
+          scope === SCOPE.COMMAND ? patterns : undefined,
       },
     };
   }
@@ -100,6 +117,7 @@ export function buildScopedRule(
   if (scope === SCOPE.COMMAND_IN_FOLDER) {
     if (!targetPath)
       throw new Error("targetPath required for command-in-folder scope");
+
     return {
       id,
       description,
@@ -108,6 +126,25 @@ export function buildScopedRule(
       tool: baseRule.tool,
       match: {
         commandPatterns: baseRule.match.commandPatterns,
+        pathPatterns: [makeFolderPattern(targetPath)],
+      },
+    };
+  }
+
+  if (scope === SCOPE.SEGMENT_IN_FOLDER) {
+    if (!targetPath)
+      throw new Error("targetPath required for segment-in-folder scope");
+    if (!segmentText)
+      throw new Error("segmentText required for segment scope");
+
+    return {
+      id,
+      description,
+      enabled: true,
+      action,
+      tool: TOOL.BASH,
+      match: {
+        segmentPatterns: [segPattern(segmentText)],
         pathPatterns: [makeFolderPattern(targetPath)],
       },
     };
@@ -156,6 +193,11 @@ export function buildScopedRule(
  * @param ctx        Extension context (for ctx.ui.custom)
  * @param cwd        Current working directory (for path resolution)
  */
+/** Build a regex pattern that matches the exact segment text. */
+function segPattern(segmentText: string): string {
+  return "^" + escapeRegex(segmentText.trim()) + "$";
+}
+
 export async function promptAction(
   rule: Rule,
   subject: string,
@@ -170,8 +212,24 @@ export async function promptAction(
     "\n" + theme.fg("text", `Tool: `) + theme.fg("muted", `${toolName}\n`);
   if (toolName === TOOL.BASH) {
     const path = extractPathsFromBashCommand(subject);
-    description +=
-      theme.fg("text", `Command: `) + theme.fg("muted", `${subject}\n`);
+
+    // Show parsed segments for chained commands
+    const parsed = parseBashCommand(subject);
+    if (!parsed.isSimple) {
+      description += theme.fg("text", `Command chain (${parsed.segments.length} segments):\n`);
+      for (const seg of parsed.segments) {
+        const op = seg.operator ? theme.fg("dim", `${seg.operator} `) : "     ";
+        const isPrimary = seg.index === parsed.primaryIndex;
+        const marker = isPrimary ? theme.fg("warning", " <- primary") : "";
+        description += `  ${op}${theme.fg("text", seg.text)}${marker}\n`;
+      }
+      description += "\n";
+      description += theme.fg("dim", "  Tip: You can scope decisions to a specific segment in the next step.") + "\n";
+    } else {
+      description +=
+        theme.fg("text", `Command: `) + theme.fg("muted", `${subject}\n`);
+    }
+
     if (path.length > 0) {
       description +=
         theme.fg("text", `Path: `) + theme.fg("muted", `${path}\n`);
@@ -182,6 +240,9 @@ export async function promptAction(
   }
 
   // Use the WizardPrompt component for a navigable 3-step wizard
+  // Build scope options with segment support for chained commands
+  const parsed = toolName === TOOL.BASH ? parseBashCommand(subject) : null;
+
   const result = await ctx.ui.custom<PromptResult | null>(
     (tui, wizardTheme, _kb, done) => {
       const wizard = new WizardPrompt({
@@ -193,6 +254,7 @@ export async function promptAction(
         input,
         cwd,
         rule,
+        parsedSegments: parsed?.isSimple ? null : (parsed?.segments ?? null),
         onComplete: (r: PromptResult) => done(r),
         onCancel: () => done(null),
         theme: wizardTheme,

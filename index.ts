@@ -178,6 +178,7 @@ export default function (pi: ExtensionAPI) {
       promptResult.scope,
       promptResult.targetPath,
       timestamp,
+      promptResult.segmentText,
     );
 
     if (promptResult.persistence === "local") {

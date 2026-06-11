@@ -15,6 +15,7 @@
 
 import { resolve } from "node:path";
 import type { Rule, SentinelConfig, ToolName } from "./types";
+import { parseBashCommand } from "./bash-parser";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -36,15 +37,15 @@ function normalizePath(p: string): string {
 
 /**
  * Extract path-like tokens from a bash command string.
- * Matches tokens beginning with ./, ../, /, or ~/ and returns them
- * as-is (caller resolves to absolute paths).
+ * Matches tokens beginning with ./, ../, /, ~/, or a Windows drive letter
+ * (e.g. D:/...) and returns them as-is (caller resolves to absolute paths).
  * Used for matching pathPatterns in hybrid bash+path rules.
  */
 export function extractPathsFromBashCommand(command: string): string[] {
   const results: string[] = [];
-  // Match tokens that start with ./, ../, /, or ~/
+  // Match tokens that start with ./, ../, /, ~/, or a drive letter (e.g. C:/)
   // Stop at whitespace, semicolons, pipe/redirect chars
-  const re = /(?:^|\s)(\.{1,2}\/[^\s;|&><"']*|\/[^\s;|&><"']+|~\/[^\s;|&><"']*)/g;
+  const re = /(?:^|\s)(\.{1,2}\/[^\s;|&><"']*|\/[^\s;|&><"']+|~\/[^\s;|&><"']*|[A-Za-z]:\/[^\s;|&><"']*)/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(command)) !== null) {
     const tok = m[1].replace(/['"]+$/g, "").trim(); // strip trailing quotes
@@ -86,6 +87,11 @@ export function extractSubject(
   return path;
 }
 
+/** Escape special regex characters in a literal string. */
+export function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 // ---------------------------------------------------------------------------
 // Core matcher
 // ---------------------------------------------------------------------------
@@ -118,6 +124,25 @@ function matchesRule(
         return false;
       }
     });
+    if (!matched) return false;
+  }
+
+  // --- Segment pattern matching (bash only) ---
+  if (match.segmentPatterns && match.segmentPatterns.length > 0) {
+    hasChecker = true;
+    if (toolName !== "bash") return false;
+    const command = typeof input.command === "string" ? input.command : "";
+    const parsed = parseBashCommand(command);
+    const matched = parsed.segments.some((seg) =>
+      match.segmentPatterns!.some((p) => {
+        try {
+          return new RegExp(p, "i").test(seg.text);
+        } catch (err) {
+          console.warn(`[pi-sentinel] Invalid segment pattern: ${p}`, err);
+          return false;
+        }
+      }),
+    );
     if (!matched) return false;
   }
 
