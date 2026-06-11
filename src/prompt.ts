@@ -23,7 +23,6 @@ import { resolve, basename, dirname } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Rule, PromptResult } from "./types";
 import { SCOPE, ACTION, TOOL } from "./types";
-import { extractPathsFromBashCommand } from "./rule-engine";
 import { parseBashCommand } from "./bash-parser";
 import { WizardPrompt } from "./tabbed-prompt";
 
@@ -211,28 +210,20 @@ export async function promptAction(
   let description =
     "\n" + theme.fg("text", `Tool: `) + theme.fg("muted", `${toolName}\n`);
   if (toolName === TOOL.BASH) {
-    const path = extractPathsFromBashCommand(subject);
-
     // Show parsed segments for chained commands
     const parsed = parseBashCommand(subject);
     if (!parsed.isSimple) {
       description += theme.fg("text", `Command chain (${parsed.segments.length} segments):\n`);
       for (const seg of parsed.segments) {
-        const op = seg.operator ? theme.fg("dim", `${seg.operator} `) : "     ";
-        const isPrimary = seg.index === parsed.primaryIndex;
-        const marker = isPrimary ? theme.fg("warning", " <- primary") : "";
-        description += `  ${op}${theme.fg("text", seg.text)}${marker}\n`;
+        const idx = theme.fg("dim", `[${seg.index + 1}] `);
+        const op = seg.operator ? theme.fg("dim", `${seg.operator} `) : "";
+        description += `  ${idx}${op}${theme.fg("text", seg.text)}\n`;
       }
       description += "\n";
       description += theme.fg("dim", "  Tip: You can scope decisions to a specific segment in the next step.") + "\n";
     } else {
       description +=
         theme.fg("text", `Command: `) + theme.fg("muted", `${subject}\n`);
-    }
-
-    if (path.length > 0) {
-      description +=
-        theme.fg("text", `Path: `) + theme.fg("muted", `${path}\n`);
     }
   } else {
     description +=

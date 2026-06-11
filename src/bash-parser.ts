@@ -28,13 +28,7 @@ export interface ParseResult {
    */
   isSimple: boolean;
 
-  /**
-   * Best-guess index of the "primary" segment (the one most likely to
-   * represent the user's real intent). Uses deterministic rules:
-   *   - Segments right of a top-level || are fallbacks (excluded)
-   *   - Leading cd/pushd/popd/export/source/. segments are setup (excluded)
-   *   - The last remaining &&/;/|-chained segment is the primary
-   */
+  /** Always 0. Kept for interface compatibility. */
   primaryIndex: number;
 
   /**
@@ -233,98 +227,10 @@ export function parseBashCommand(command: string): ParseResult {
 
   const operators = [...opsFound] as Array<"&&" | "||" | ";" | "|">;
   const isSimple = segments.length <= 1;
-  const primaryIndex = isSimple ? 0 : findPrimaryIndex(segments);
 
-  return { segments, isSimple, primaryIndex, operators };
+  return { segments, isSimple, primaryIndex: 0, operators };
 }
 
 
 
-// ---------------------------------------------------------------------------
-// Primary index heuristic (deterministic, testable)
-// ---------------------------------------------------------------------------
 
-// Commands that are clearly "setup" — they change context, not do real work.
-const SETUP_PATTERNS = [
-  /^cd\s/i,
-  /^pushd\s/i,
-  /^popd\s/i,
-  /^export\s/i,
-  /^source\s/i,
-  /^\.\s/i,
-  /^set\s/i,
-  /^unset\s/i,
-  /^alias\s/i,
-  /^unalias\s/i,
-] as const;
-
-// Commands that are clearly "guards/checks" — they test existence before
-// the real operation.
-const GUARD_PATTERNS = [
-  /^ls\s/i,
-  /^test\s/i,
-  /^\[-/,
-  /^\[ /,
-  /^which\s/i,
-  /^command\s+-v\s/i,
-  /^type\s/i,
-  /^hash\s/i,
-] as const;
-
-/**
- * Find the index of the primary segment using deterministic rules:
- *
- * 1. Build a "main chain": exclude everything right of a top-level ||
- *    (structural fallback).
- * 2. Within the main chain, exclude leading segments matching SETUP_PATTERNS.
- * 3. Within the remaining chain, exclude segments matching GUARD_PATTERNS
- *    that appear BEFORE any non-guard segment.
- * 4. Return the index of the last remaining segment, or the last segment
- *    of the main chain if nothing remains after filtering.
- */
-export function findPrimaryIndex(segments: ParsedSegment[]): number {
-  if (segments.length <= 1) return 0;
-
-  // Step 1: find the first || and cut there (everything right of first
-  // top-level || is a fallback chain).
-  let mainEnd = segments.length;
-  for (let i = 0; i < segments.length; i++) {
-    if (segments[i].operator === "||") {
-      mainEnd = i;
-      break;
-    }
-  }
-
-  if (mainEnd === 0) return 0; // nothing before the || — shouldn't happen
-
-  // Step 2-3: iterate through main chain, excluding setup and guard segments
-  let foundNonGuard = false;
-  let lastCandidate = segments[mainEnd - 1].index;
-  let lastNonSetup = -1;
-
-  for (let i = 0; i < mainEnd; i++) {
-    const seg = segments[i];
-    const isSetup = SETUP_PATTERNS.some((p) => p.test(seg.text));
-    const isGuard = GUARD_PATTERNS.some((p) => p.test(seg.text));
-
-    if (!isSetup) {
-      lastNonSetup = seg.index;
-    }
-
-    if (!isSetup && !isGuard) {
-      foundNonGuard = true;
-      lastCandidate = seg.index;
-    } else if (!foundNonGuard && isGuard) {
-      // Guard segment before any non-guard — could be relevant, track it
-      // but prefer later non-guard
-      lastCandidate = seg.index;
-    }
-  }
-
-  // Step 4: if we found non-guard segments, use the last one.
-  // Otherwise use the last non-setup segment.
-  // Otherwise use the last segment in the main chain.
-  if (foundNonGuard) return lastCandidate;
-  if (lastNonSetup >= 0) return lastNonSetup;
-  return segments[mainEnd - 1].index;
-}

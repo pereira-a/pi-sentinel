@@ -19,33 +19,12 @@
  *   Global  → ~/.pi/agent/extensions/pi-sentinel/config.json
  */
 
-import { statSync } from "node:fs";
 import { resolve, basename, dirname } from "node:path";
 import { matchesKey, Key, truncateToWidth } from "@earendil-works/pi-tui";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import type { Rule, PromptResult, Scope, PersistenceLevel } from "./types";
 import { SCOPE, PERSISTENCE, ACTION, TOOL } from "./types";
 import type { ParsedSegment } from "./bash-parser";
-import { findPrimaryIndex } from "./bash-parser";
-import { extractPathsFromBashCommand } from "./rule-engine";
-
-// ---------------------------------------------------------------------------
-// Path helpers (duplicated from prompt.ts to keep this file self-contained)
-// ---------------------------------------------------------------------------
-
-/** Normalize path separators to forward slashes. */
-function fwd(p: string): string {
-  return p.replace(/\\/g, "/");
-}
-
-/** Try to determine if a path is a directory. Falls back to false on error. */
-function isDirectory(absPath: string): boolean {
-  try {
-    return statSync(absPath).isDirectory();
-  } catch {
-    return !basename(absPath).includes(".");
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Action option definitions
@@ -78,12 +57,6 @@ interface ScopeOption {
   separator?: boolean;
 }
 
-/** Truncate a string to fit within a max length, appending "..." if trimmed. */
-function truncate(s: string, max: number): string {
-  if (s.length <= max) return s;
-  return s.slice(0, max - 3) + "...";
-}
-
 /** Build scope options, including per-segment choices for chained commands. */
 function buildScopeOptions(
   toolName: string,
@@ -93,34 +66,13 @@ function buildScopeOptions(
   parsedSegments: readonly ParsedSegment[] | null,
 ): ScopeOption[] {
   if (toolName === TOOL.BASH) {
-    const rawPaths = extractPathsFromBashCommand(subject);
-    let resolvedFolder: string | null = null;
-
-    if (rawPaths.length > 0) {
-      const lastRaw = rawPaths[rawPaths.length - 1];
-      const abs = resolve(cwd, lastRaw);
-      resolvedFolder = isDirectory(abs) ? abs : dirname(abs);
-    }
-
-    const displayFolder = resolvedFolder
-      ? fwd(resolvedFolder).split("/").slice(-2).join("/")
-      : null;
-
     const options: ScopeOption[] = [
       {
-        label: "Any folder (entire command)",
+        label: "The entire command",
         scope: SCOPE.COMMAND,
         targetPath: null,
       },
     ];
-
-    if (displayFolder) {
-      options.push({
-        label: `Only in ./${displayFolder} (entire command)`,
-        scope: SCOPE.COMMAND_IN_FOLDER,
-        targetPath: resolvedFolder,
-      });
-    }
 
     // Add per-segment options for chained commands
     if (parsedSegments && parsedSegments.length > 1) {
@@ -131,24 +83,12 @@ function buildScopeOptions(
         separator: true,
       });
       for (const seg of parsedSegments) {
-        const opLabel = seg.operator ? `${seg.operator} ` : "";
-        const segLabel = truncate(seg.text, 40);
         options.push({
-          label: `${opLabel}${segLabel}`,
+          label: `Segment ${seg.index + 1}`,
           scope: SCOPE.SEGMENT,
           targetPath: null,
           segmentText: seg.text,
         });
-
-        // Also add folder-scoped version if we have a resolved folder
-        if (displayFolder) {
-          options.push({
-            label: `  └ only in ./${displayFolder}`,
-            scope: SCOPE.SEGMENT_IN_FOLDER,
-            targetPath: resolvedFolder,
-            segmentText: seg.text,
-          });
-        }
       }
     }
 
@@ -260,30 +200,8 @@ export class WizardPrompt {
       opts.parsedSegments,
     );
 
-    // If the parsed command has a suggested primary, auto-select it
-    if (opts.parsedSegments && opts.parsedSegments.length > 1) {
-      const primaryIdx = findPrimaryIndex([...opts.parsedSegments]);
-      // Walk through scope options to find the SEGMENT option for the primary segment
-      let segTarget = 0;
-      for (const seg of opts.parsedSegments) {
-        if (seg.index === primaryIdx) break;
-        // Each segment adds 1 (SEGMENT) or 2 (SEGMENT + SEGMENT_IN_FOLDER) options
-        segTarget++;
-      }
-      // Count actual options to reach segTarget
-      let found = -1;
-      for (let i = 0; i < this.scopeOptions.length; i++) {
-        if (this.scopeOptions[i].separator) continue;
-        if (this.scopeOptions[i].scope === SCOPE.SEGMENT ||
-            this.scopeOptions[i].scope === SCOPE.SEGMENT_IN_FOLDER) {
-          found++;
-          if (found === segTarget) {
-            this.scopeIdx = i;
-            break;
-          }
-        }
-      }
-    }
+    // Default to first scope option ("The entire command")
+    this.scopeIdx = 0;
   }
 
   // -----------------------------------------------------------------------
